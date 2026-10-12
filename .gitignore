@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+
+# 원본 영상과 실행 중 받는 가중치
+*.mp4
+*.pt
+*.onnx
+*.engine
+
+# 로컬 롤백 사본
+backup_*/

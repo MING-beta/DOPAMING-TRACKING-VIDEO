@@ -1,0 +1,11 @@
+opencv-python>=4.10
+numpy>=1.26
+torch>=2.2
+torchvision>=0.17
+ultralytics>=8.4.175
+easyocr>=1.7.2
+Pillow>=10.0
+
+# 선택 사항. 없어도 track_player.py는 EasyOCR로 동작합니다.
+# PARSeq: 첫 실행 시 torch.hub가 https://github.com/baudm/parseq 를 받습니다.
+# SAM2 마스크 정제: pip install sam2

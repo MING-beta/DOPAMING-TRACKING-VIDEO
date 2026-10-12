@@ -1,0 +1,97 @@
+{
+  "target_number": "26",
+  "video": "c:\\Dopaming\\DOPAMING-TRACKING-VIDEO\\hockey_game.mp4",
+  "model": "yolo26m-pose.pt",
+  "window": {
+    "start_sec": 1800.0,
+    "end_sec": 2400.0
+  },
+  "sample_fps": 5.0,
+  "team_color": "BGR(104, 98, 125), 밝기 125",
+  "intervals": [
+    {
+      "start_sec": 2070.085,
+      "end_sec": 2083.498,
+      "start": "34:30",
+      "end": "34:43",
+      "duration_sec": 13.413
+    },
+    {
+      "start_sec": 2085.7,
+      "end_sec": 2089.304,
+      "start": "34:45",
+      "end": "34:49",
+      "duration_sec": 3.604
+    },
+    {
+      "start_sec": 2329.544,
+      "end_sec": 2355.169,
+      "start": "38:49",
+      "end": "39:15",
+      "duration_sec": 25.625
+    },
+    {
+      "start_sec": 2356.971,
+      "end_sec": 2361.375,
+      "start": "39:16",
+      "end": "39:21",
+      "duration_sec": 4.404
+    },
+    {
+      "start_sec": 2393.207,
+      "end_sec": 2400.0,
+      "start": "39:53",
+      "end": "40:00",
+      "duration_sec": 6.793
+    }
+  ],
+  "total_duration_sec": 53.839,
+  "diagnostics": {
+    "frames": 2997,
+    "detections": 13853,
+    "trackable": 13409,
+    "ocr_attempts": 945,
+    "blur_rejected": 0,
+    "back_rejected": 6134,
+    "small_rejected": 0,
+    "region_rejected": 48,
+    "reader_disagreements": 0,
+    "confirmed_tracks": 6,
+    "rebinds": 31,
+    "other_team_rejected": 0,
+    "sleeve_hits": 0,
+    "sleeve_attempts": 0,
+    "prototype_matches": 2,
+    "digit_reads": {
+      "44": 19,
+      "21": 19,
+      "37": 9,
+      "26": 5,
+      "14": 4,
+      "51": 4,
+      "01": 3,
+      "40": 3,
+      "71": 3,
+      "49": 2,
+      "17": 2,
+      "15": 2,
+      "41": 2,
+      "33": 2,
+      "10": 2,
+      "91": 2,
+      "83": 1,
+      "47": 1,
+      "74": 1,
+      "11": 1,
+      "22": 1,
+      "97": 1,
+      "16": 1,
+      "53": 1,
+      "60": 1,
+      "77": 1,
+      "63": 1,
+      "50": 1,
+      "61": 1
+    }
+  }
+}
