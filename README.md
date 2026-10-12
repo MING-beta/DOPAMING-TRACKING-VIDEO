@@ -4,21 +4,91 @@
 
 대상은 빨강 어깨 + 흰 몸통 유니폼의 **EAN 26번**(루비덕스)입니다. 같은 번호라도 검정+흰색 유니폼(아이언 이글스)은 제외합니다. 방송 줌 때문에 키, 픽셀 높이, 링크 위치는 신원 조건으로 쓰지 않습니다.
 
-## 준비
+## 설치
 
-- Python 3.11 이상 (`py -3`)
-- NVIDIA GPU와 CUDA PyTorch. 시간 측정은 RTX 3060 12GB 기준입니다.
-- 포즈 가중치 `yolo26m-pose.pt`는 첫 실행 때 Ultralytics가 받습니다. 없으면 `yolo26s-pose.pt`, `yolo11m-pose.pt` 순으로 시도합니다.
+Windows에서, 프로그램을 한 번도 설치하지 않은 PC부터 시작하는 순서입니다. 아래 명령은 1단계에서 받은 `DOPAMING-TRACKING-VIDEO` 폴더에서 입력합니다.
+
+### 1. Git으로 파일 받기
+
+이 프로젝트 파일은 GitHub에 있습니다. 주소는 [MING-beta/DOPAMING-TRACKING-VIDEO](https://github.com/MING-beta/DOPAMING-TRACKING-VIDEO)입니다. 파일을 받기만 하면 되므로 GitHub 가입은 필요 없습니다.
+
+1. [Git for Windows](https://git-scm.com/download/win)에서 설치 파일을 받습니다. **Click here to download**를 누르면 됩니다.
+2. 설치 창이 열리면 옵션을 바꾸지 않고 **Next**만 눌러 설치를 끝냅니다.
+3. 파일을 둘 폴더를 엽니다. 예를 들어 바탕 화면이나 `C:\Dopaming`입니다. 폴더가 없으면 새로 만들어도 됩니다.
+4. 그 폴더 창의 위쪽 주소창을 클릭하고 `cmd`를 입력한 뒤 Enter를 누릅니다. 검은 창이 열리고, 이미 그 폴더 안에 있습니다.
+5. 아래 문장을 복사해서 검은 창에 붙여 넣고 Enter를 누릅니다. 붙여 넣기는 창에서 마우스 오른쪽 단추를 누르면 됩니다.
 
 ```text
+git clone https://github.com/MING-beta/DOPAMING-TRACKING-VIDEO.git
+```
+
+6. 끝나면 같은 위치에 `DOPAMING-TRACKING-VIDEO` 폴더가 생깁니다. 이후 설치와 `start.bat` 실행은 모두 이 폴더 안에서 합니다.
+7. 나중에 다시 명령창을 열 때도 이 폴더를 연 뒤, 주소창에 `cmd`를 입력하면 됩니다.
+
+### 2. Python
+
+[Python 3.12](https://www.python.org/downloads/windows/)를 설치합니다. 3.11도 됩니다. 설치 첫 화면에서 **Add python.exe to PATH**를 켠 뒤 Install Now를 누릅니다.
+
+설치가 끝나면 새 터미널에서 확인합니다.
+
+```text
+py -3 --version
+```
+
+`Python 3.12.x`처럼 나오면 됩니다.
+
+### 3. NVIDIA 그래픽 드라이버
+
+검출은 NVIDIA GPU에서 돌리도록 맞춰져 있습니다. 이 저장소의 시간(전체 영상 약 37분)은 RTX 3060 12GB 기준입니다. [NVIDIA 드라이버](https://www.nvidia.com/Download/index.aspx)를 설치한 뒤 PC를 다시 시작합니다.
+
+CUDA 툴킷은 따로 설치하지 않아도 됩니다. 아래 PyTorch 패키지에 GPU용 런타임이 들어 있습니다. GPU가 없으면 CPU로도 실행은 되지만, 전체 영상은 몇 시간이 될 수 있습니다.
+
+### 4. Visual C++ 런타임
+
+PyTorch와 OpenCV가 Windows에서 이 런타임에 의존합니다. [Microsoft Visual C++ 재배포 패키지](https://learn.microsoft.com/ko-kr/cpp/windows/latest-supported-vc-redist)의 X64 설치 파일을 받아 설치합니다. 이미 설치되어 있으면 그대로 둡니다.
+
+### 5. 파이썬 패키지
+
+GPU용 PyTorch를 먼저 설치한 다음 나머지 라이브러리를 설치합니다. `requirements.txt`만 설치하면 CPU용 PyTorch가 들어갈 수 있습니다.
+
+```text
+py -3 -m pip install --upgrade pip
+py -3 -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 py -3 -m pip install -r requirements.txt
 ```
+
+확인합니다. `True`가 나와야 GPU를 씁니다.
+
+```text
+py -3 -c "import torch; print(torch.cuda.is_available())"
+```
+
+디스크는 패키지와 모델까지 수 GB가 필요합니다.
+
+### 6. 유튜브 영상을 JDownloader로 받기
+
+분석할 영상은 저장소에 없습니다. 유튜브 영상을 받을 때는 [JDownloader 2](https://jdownloader.org/jdownloader2)를 씁니다. 사용할 권한이 있는 영상만 받으세요.
+
+1. 위 페이지에서 Windows용 설치 파일을 받아 설치하고 JDownloader를 실행합니다. 설치 중 Java가 필요하다고 나오면 안내대로 설치합니다.
+2. JDownloader가 켜진 상태에서 유튜브 영상 주소를 복사합니다. 클립보드 감시가 켜져 있으면 링크 수집 창에 영상이 나타납니다. 안 보이면 링크 수집 탭의 **새 링크 추가**에 주소를 붙여 넣습니다.
+3. 목록에서 **1080p MP4**처럼 영상과 소리가 함께 있는 파일을 고릅니다. 이 분석은 1920×1080 중계 화면에 맞춰져 있습니다. 소리만 있는 항목이나 너무 낮은 화질은 고르지 않습니다.
+4. 다운로드를 시작한 뒤, 받은 파일 이름을 `hockey_game.mp4`로 바꿔 이 프로젝트 폴더에 넣습니다. 다른 이름으로 두었다면 `start.bat` 위로 그 파일을 끌어다 놓아도 됩니다.
+5. 주소가 수집되지 않으면 JDownloader 메뉴에서 업데이트를 실행한 다음 주소를 다시 복사합니다.
+
+### 7. 첫 실행 때 자동으로 받는 파일
+
+인터넷이 연결되어 있어야 합니다.
+
+- 포즈 가중치 `yolo26m-pose.pt`. 없으면 `yolo26s-pose.pt`, `yolo11m-pose.pt` 순으로 시도합니다.
+- EasyOCR 영어 인식 모델
 
 PARSeq와 SAM2는 선택입니다. 없어도 EasyOCR만으로 동작하며, 아래 실행 예시는 둘 다 끕니다.
 
 ## 실행
 
-인자 없이 돌리면 영상 처음부터 끝까지 분석합니다. `hockey_game.mp4`(1920×1080, 59.94fps, 약 57분 38초)는 이 설정에서 약 37분 걸립니다.
+`start.bat`을 두 번 누르면 `이름(EAN)`, `번호(26)`을 물어본 뒤 `hockey_game.mp4` 전체를 분석합니다. 그냥 엔터를 누르면 괄호 안 값으로 진행합니다. 다른 영상을 분석하려면 그 파일을 `start.bat` 위로 끌어다 놓습니다. 창은 분석이 끝난 뒤 키를 누를 때까지 열려 있습니다.
+
+`hockey_game.mp4`(1920×1080, 59.94fps, 약 57분 38초)는 이 설정에서 약 37분 걸립니다. 터미널에서 직접 실행하려면 아래와 같습니다.
 
 ```text
 py -3 track_player.py --video hockey_game.mp4 --number 26 --no-parseq --no-sam2
@@ -34,6 +104,7 @@ py -3 track_player.py --video hockey_game.mp4 --number 26 --start 1800 --end 240
 | --- | --- | --- |
 | `--video` | `hockey_game.mp4` | 분석할 영상 |
 | `--number` | `26` | 두 자리 등번호 |
+| `--name` | `EAN` | 유니폼에 적힌 영문 이름 |
 | `--start` | `0` | 시작 시각(초) |
 | `--end` | 영상 끝 | 끝 시각(초). 비우면 영상 길이로 맞춥니다 |
 | `--sample-fps` | `5` | 검출·추적 샘플 주기. OCR은 0.45초마다 |
@@ -45,7 +116,7 @@ py -3 track_player.py --video hockey_game.mp4 --number 26 --start 1800 --end 240
 | `--no-oblique` | 끔 | 비스듬한 등을 OCR 후보에서 뺌 |
 | `--save-crops` | 끔 | OCR에 넣은 등판 crop 저장 |
 
-이름은 코드의 `TARGET_NAME`(`EAN`)입니다. 중단하면(`Ctrl+C`) 그때까지 확정된 구간을 저장합니다.
+이름과 번호를 비우면 `EAN` `26`을 사용합니다. 중단하면(`Ctrl+C`) 그때까지 확정된 구간을 저장합니다.
 
 ## 출력
 
@@ -101,6 +172,7 @@ py -3 track_player.py --video hockey_game.mp4 --number 26 --start 1800 --end 240
 | 파일 | 역할 |
 | --- | --- |
 | `track_player.py` | 검출, OCR, 시프트, 구간 병합 |
+| `start.bat` | 이름과 등번호를 입력받아 전체 영상을 분석 |
 | `requirements.txt` | Python 의존성 |
 | `botsort_hockey.yaml` | BoT-SORT 설정. 실행 시 다시 씁니다 |
 | `hockey_game_player_26_timeline.json` | 전체 영상 출연 구간. 합계 241.8초 |

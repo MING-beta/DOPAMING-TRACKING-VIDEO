@@ -1403,6 +1403,7 @@ class PlayerTimelineTracker:
     def __init__(self, args: argparse.Namespace) -> None:
         self.video_path = Path(args.video)
         self.target = str(args.number)
+        self.target_name = str(args.name)
         self.start_sec = float(args.start)
         self.end_sec = None if args.end is None else float(args.end)
         self.sample_fps = float(args.sample_fps)
@@ -1476,7 +1477,7 @@ class PlayerTimelineTracker:
         print(
             f"\n분석 구간 {format_time(self.start_sec)} ~ {format_time(self.end_sec)} "
             f"(추적 {self.sample_fps:.1f}fps, OCR {OCR_INTERVAL_SEC:.2f}초 간격, "
-            f"목표 {TARGET_NAME} 또는 {self.target}번, 빨강+흰색"
+            f"목표 {self.target_name} 또는 {self.target}번, 빨강+흰색"
             + (", 측면 등판 포함" if self.allow_oblique else "")
             + ")"
         )
@@ -1785,7 +1786,7 @@ class PlayerTimelineTracker:
         if sharp and item["torso_text"] and gray is not None:
             did_read = True
             if torso_crop.shape[0] >= 80:
-                named = bool(self.reader.read_name(torso_crop, gray, TARGET_NAME))
+                named = bool(self.reader.read_name(torso_crop, gray, self.target_name))
             read = self.reader.read(torso_crop, gray)
         if named:
             state.name_hits += 1
@@ -1828,7 +1829,7 @@ class PlayerTimelineTracker:
                 self._save_crop(torso_crop, current, state.logical_id)
 
         if named and not state.confirmed:
-            self._confirm(state, current, f"이름 {TARGET_NAME}", text=True)
+            self._confirm(state, current, f"이름 {self.target_name}", text=True)
 
         saw_number = (number == self.target and conf >= TARGET_MIN_CONF) or sleeve_number == self.target
         if named and saw_number:
@@ -2027,7 +2028,7 @@ class PlayerTimelineTracker:
         _seen, _kind, chosen, chosen_sig = numbers[-1]
         self.prototype_embed = chosen
         self.prototype_signature = chosen_sig
-        print(f"  기준 외형 저장 @ {format_time(current)}: {TARGET_NAME}과 {self.target}이 같이 보임", flush=True)
+        print(f"  기준 외형 저장 @ {format_time(current)}: {self.target_name}과 {self.target}이 같이 보임", flush=True)
         if chosen_sig is not None and chosen_sig.mean_v >= 100:
             locked_before = self.team.signature is not None or self.team.hint is not None
             self.team.adopt(chosen_sig)
@@ -2067,7 +2068,7 @@ class PlayerTimelineTracker:
         signature = jersey_signature(crop)
         self.prototype_embed = embed
         self.prototype_signature = signature
-        print(f"  기준 외형 저장 @ {format_time(current)}: {TARGET_NAME}과 {self.target}이 같이 보임", flush=True)
+        print(f"  기준 외형 저장 @ {format_time(current)}: {self.target_name}과 {self.target}이 같이 보임", flush=True)
         if signature is not None and signature.mean_v >= 100:
             locked_before = self.team.signature is not None or self.team.hint is not None
             self.team.adopt(signature)
@@ -2124,6 +2125,7 @@ class PlayerTimelineTracker:
         csv_path = out_dir / f"{stem}.csv"
         payload = {
             "target_number": self.target,
+            "target_name": self.target_name,
             "video": str(self.video_path),
             "model": self.model_name,
             "window": {"start_sec": self.start_sec, "end_sec": self.end_sec},
@@ -2177,6 +2179,7 @@ class PlayerTimelineTracker:
 
 
 def print_summary(tracker: PlayerTimelineTracker, intervals: list[tuple[float, float]], json_path: Path, csv_path: Path) -> None:
+    print(f"\n{tracker.target_name} {tracker.target}")
     playtime = tracker.playtime_summary()
     shown = [row for row in playtime["periods"] if row["total_sec"] > 0 or row["shifts"]]
     print()
@@ -2223,6 +2226,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="아이스하키 영상에서 특정 등번호의 출연 구간을 뽑습니다.")
     parser.add_argument("--video", default=VIDEO_PATH, help="분석할 영상 경로")
     parser.add_argument("--number", default=TARGET_NUMBER, help="찾을 등번호")
+    parser.add_argument("--name", default=TARGET_NAME, help="유니폼에 적힌 이름. 예: EAN")
     parser.add_argument("--start", type=float, default=START_TIME_SEC, help="시작 시각(초). 기본은 영상 처음")
     parser.add_argument("--end", type=float, default=END_TIME_SEC, help="끝 시각(초). 기본은 영상 끝")
     parser.add_argument("--sample-fps", type=float, default=SAMPLE_FPS, help="검출/추적 샘플 주기")
@@ -2242,6 +2246,9 @@ def main() -> None:
         raise SystemExit("끝 시각은 시작 시각보다 커야 합니다.")
     if not str(args.number).isdigit() or len(str(args.number)) != 2:
         raise SystemExit("등번호는 두 자리 숫자여야 합니다. 예: 26")
+    args.name = str(args.name).strip().upper()
+    if not args.name.isalpha():
+        raise SystemExit("이름은 영문이어야 합니다. 예: EAN")
     tracker = PlayerTimelineTracker(args)
     intervals: list[tuple[float, float]] = []
     try:
