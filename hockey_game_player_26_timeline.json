@@ -1,97 +1,278 @@
 {
   "target_number": "26",
-  "video": "c:\\Dopaming\\DOPAMING-TRACKING-VIDEO\\hockey_game.mp4",
+  "video": "hockey_game.mp4",
   "model": "yolo26m-pose.pt",
   "window": {
-    "start_sec": 1800.0,
-    "end_sec": 2400.0
+    "start_sec": 0.0,
+    "end_sec": 3458.50505
   },
   "sample_fps": 5.0,
-  "team_color": "BGR(104, 98, 125), 밝기 125",
+  "team_color": "아직 없음",
   "intervals": [
     {
-      "start_sec": 2070.085,
-      "end_sec": 2083.498,
+      "start_sec": 44.845,
+      "end_sec": 75.876,
+      "start": "00:44",
+      "end": "01:15",
+      "duration_sec": 31.031
+    },
+    {
+      "start_sec": 201.401,
+      "end_sec": 203.203,
+      "start": "03:21",
+      "end": "03:23",
+      "duration_sec": 1.802
+    },
+    {
+      "start_sec": 222.222,
+      "end_sec": 233.033,
+      "start": "03:42",
+      "end": "03:53",
+      "duration_sec": 10.811
+    },
+    {
+      "start_sec": 235.635,
+      "end_sec": 255.255,
+      "start": "03:55",
+      "end": "04:15",
+      "duration_sec": 19.62
+    },
+    {
+      "start_sec": 568.368,
+      "end_sec": 574.974,
+      "start": "09:28",
+      "end": "09:34",
+      "duration_sec": 6.606
+    },
+    {
+      "start_sec": 580.58,
+      "end_sec": 587.987,
+      "start": "09:40",
+      "end": "09:47",
+      "duration_sec": 7.407
+    },
+    {
+      "start_sec": 929.128,
+      "end_sec": 932.131,
+      "start": "15:29",
+      "end": "15:32",
+      "duration_sec": 3.003
+    },
+    {
+      "start_sec": 960.359,
+      "end_sec": 966.365,
+      "start": "16:00",
+      "end": "16:06",
+      "duration_sec": 6.006
+    },
+    {
+      "start_sec": 968.568,
+      "end_sec": 1012.211,
+      "start": "16:08",
+      "end": "16:52",
+      "duration_sec": 43.643
+    },
+    {
+      "start_sec": 1019.619,
+      "end_sec": 1020.82,
+      "start": "16:59",
+      "end": "17:00",
+      "duration_sec": 1.201
+    },
+    {
+      "start_sec": 1024.223,
+      "end_sec": 1025.825,
+      "start": "17:04",
+      "end": "17:05",
+      "duration_sec": 1.602
+    },
+    {
+      "start_sec": 1358.557,
+      "end_sec": 1359.958,
+      "start": "22:38",
+      "end": "22:39",
+      "duration_sec": 1.401
+    },
+    {
+      "start_sec": 1364.964,
+      "end_sec": 1367.566,
+      "start": "22:44",
+      "end": "22:47",
+      "duration_sec": 2.602
+    },
+    {
+      "start_sec": 1437.236,
+      "end_sec": 1440.239,
+      "start": "23:57",
+      "end": "24:00",
+      "duration_sec": 3.003
+    },
+    {
+      "start_sec": 1795.594,
+      "end_sec": 1798.997,
+      "start": "29:55",
+      "end": "29:58",
+      "duration_sec": 3.403
+    },
+    {
+      "start_sec": 2070.268,
+      "end_sec": 2073.071,
       "start": "34:30",
-      "end": "34:43",
-      "duration_sec": 13.413
+      "end": "34:33",
+      "duration_sec": 2.803
     },
     {
-      "start_sec": 2085.7,
-      "end_sec": 2089.304,
-      "start": "34:45",
-      "end": "34:49",
-      "duration_sec": 3.604
+      "start_sec": 2339.337,
+      "end_sec": 2347.945,
+      "start": "38:59",
+      "end": "39:07",
+      "duration_sec": 8.608
     },
     {
-      "start_sec": 2329.544,
-      "end_sec": 2355.169,
-      "start": "38:49",
-      "end": "39:15",
-      "duration_sec": 25.625
+      "start_sec": 2381.579,
+      "end_sec": 2391.189,
+      "start": "39:41",
+      "end": "39:51",
+      "duration_sec": 9.61
     },
     {
-      "start_sec": 2356.971,
-      "end_sec": 2361.375,
-      "start": "39:16",
-      "end": "39:21",
-      "duration_sec": 4.404
-    },
-    {
-      "start_sec": 2393.207,
-      "end_sec": 2400.0,
+      "start_sec": 2393.391,
+      "end_sec": 2395.993,
       "start": "39:53",
-      "end": "40:00",
-      "duration_sec": 6.793
+      "end": "39:55",
+      "duration_sec": 2.602
+    },
+    {
+      "start_sec": 2701.098,
+      "end_sec": 2703.901,
+      "start": "45:01",
+      "end": "45:03",
+      "duration_sec": 2.803
+    },
+    {
+      "start_sec": 2766.564,
+      "end_sec": 2785.783,
+      "start": "46:06",
+      "end": "46:25",
+      "duration_sec": 19.219
+    },
+    {
+      "start_sec": 2789.186,
+      "end_sec": 2812.209,
+      "start": "46:29",
+      "end": "46:52",
+      "duration_sec": 23.023
+    },
+    {
+      "start_sec": 3199.997,
+      "end_sec": 3210.807,
+      "start": "53:19",
+      "end": "53:30",
+      "duration_sec": 10.81
+    },
+    {
+      "start_sec": 3214.011,
+      "end_sec": 3215.612,
+      "start": "53:34",
+      "end": "53:35",
+      "duration_sec": 1.601
+    },
+    {
+      "start_sec": 3222.019,
+      "end_sec": 3239.636,
+      "start": "53:42",
+      "end": "53:59",
+      "duration_sec": 17.617
     }
   ],
-  "total_duration_sec": 53.839,
+  "total_duration_sec": 241.837,
   "diagnostics": {
-    "frames": 2997,
-    "detections": 13853,
-    "trackable": 13409,
-    "ocr_attempts": 945,
-    "blur_rejected": 0,
-    "back_rejected": 6134,
+    "frames": 17276,
+    "detections": 79856,
+    "trackable": 76962,
+    "ocr_attempts": 5515,
+    "blur_rejected": 2,
+    "back_rejected": 34729,
     "small_rejected": 0,
-    "region_rejected": 48,
+    "region_rejected": 510,
     "reader_disagreements": 0,
-    "confirmed_tracks": 6,
-    "rebinds": 31,
+    "confirmed_tracks": 36,
+    "rebinds": 124,
     "other_team_rejected": 0,
     "sleeve_hits": 0,
     "sleeve_attempts": 0,
-    "prototype_matches": 2,
+    "prototype_matches": 1,
     "digit_reads": {
-      "44": 19,
-      "21": 19,
-      "37": 9,
-      "26": 5,
-      "14": 4,
-      "51": 4,
-      "01": 3,
+      "21": 132,
+      "37": 98,
+      "44": 76,
+      "87": 73,
+      "26": 38,
+      "33": 29,
+      "91": 24,
+      "31": 22,
+      "81": 20,
+      "10": 20,
+      "17": 17,
+      "01": 17,
+      "16": 10,
+      "77": 10,
+      "11": 9,
+      "41": 9,
+      "49": 8,
+      "14": 7,
+      "57": 7,
+      "71": 7,
+      "78": 7,
+      "47": 6,
+      "20": 6,
+      "51": 5,
+      "19": 5,
+      "67": 5,
+      "07": 5,
+      "13": 5,
+      "76": 4,
+      "02": 4,
+      "09": 4,
+      "42": 4,
+      "18": 4,
       "40": 3,
-      "71": 3,
-      "49": 2,
-      "17": 2,
-      "15": 2,
-      "41": 2,
-      "33": 2,
-      "10": 2,
-      "91": 2,
-      "83": 1,
-      "47": 1,
-      "74": 1,
-      "11": 1,
-      "22": 1,
-      "97": 1,
-      "16": 1,
-      "53": 1,
+      "28": 3,
+      "32": 3,
+      "15": 3,
+      "61": 3,
+      "22": 3,
+      "72": 3,
+      "34": 3,
+      "53": 3,
+      "24": 3,
+      "66": 2,
+      "64": 2,
+      "82": 2,
+      "36": 2,
+      "52": 2,
+      "63": 2,
+      "73": 2,
+      "12": 2,
+      "90": 2,
+      "30": 2,
+      "04": 2,
+      "74": 2,
+      "23": 2,
+      "62": 2,
+      "56": 1,
+      "03": 1,
+      "39": 1,
       "60": 1,
-      "77": 1,
-      "63": 1,
       "50": 1,
-      "61": 1
+      "48": 1,
+      "46": 1,
+      "29": 1,
+      "27": 1,
+      "75": 1,
+      "98": 1,
+      "55": 1,
+      "45": 1
     }
   }
 }

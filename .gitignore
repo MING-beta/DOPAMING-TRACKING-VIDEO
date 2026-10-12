@@ -7,5 +7,9 @@ __pycache__/
 *.onnx
 *.engine
 
-# 로컬 롤백 사본
+# 로컬 롤백 사본과 비교용 결과
 backup_*/
+*.full.json
+*.full.csv
+*.playtime-test.json
+*.playtime-test.csv

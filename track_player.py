@@ -7,6 +7,7 @@
   4. 빨강+흰색이면 이름 또는 등번호(0.35부터) 중 하나만 맞아도 확정한다.
   5. 이름과 번호가 같이 보인 장면의 외형을 기준으로 저장하고, 그 뒤에만 짧게 재연결한다.
   6. 확정된 트랙이 링크 위에 있던 시각을 모아 2초 이내 간격은 하나의 구간으로 합친다.
+  7. 상단 스코어보드의 경기 시계로 시프트를 예측하고, 피리어드별·경기 전체 플레이타임을 더한다.
 
 실행
   py -3 track_player.py --video hockey_game.mp4 --number 26
@@ -21,8 +22,10 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import sys
 import traceback
+from bisect import bisect_left
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -80,6 +83,21 @@ ENABLE_SLEEVE_OCR = False
 SAVE_DEBUG_CROPS = False
 
 SCOREBUG_TOP_RATIO = 0.14
+# 1920x1080 중계의 "1st | 19:09" 알약. 다른 해상도는 같은 비율로 자른다.
+SCOREBUG_CLOCK_BOX = (844, 16, 1110, 105)
+SCOREBUG_CLOCK_REF = (1920, 1080)
+PERIOD_LENGTH_SEC = 20 * 60
+SHIFT_GAP_SEC = 75.0
+SHIFT_MIN_SEC = 40.0
+SHIFT_OPEN_MAX_SEC = 60.0
+SHIFT_WHISTLE_MAX_SEC = 90.0
+# 재투입 최소 휴식(약 1분 30초)보다 짧은 공백은 같은 투입으로 잇는다.
+SHIFT_BRIDGE_SEC = 75.0
+# 3피리어드 이후, 종료 1분 안에 보이면 남은 시계는 버저까지 뛴 것으로 본다.
+FINAL_MINUTE_SEC = 60.0
+GAME_END_PERIOD = 3
+CLOCK_HOLD_SEC = 1.6
+CLOCK_MATCH_SEC = 3.0
 MIN_TRACK_HEIGHT_RATIO = 0.040
 MIN_OCR_HEIGHT_RATIO = 0.060
 MAX_OCR_PER_FRAME = 5
@@ -97,6 +115,24 @@ FACE_KEYPOINTS = (0, 1, 2)
 def format_time(seconds: float) -> str:
     seconds = max(0, int(seconds))
     return f"{seconds // 60:02d}:{seconds % 60:02d}"
+
+
+def format_period_label(period: int) -> str:
+    labels = {1: "1st", 2: "2nd", 3: "3rd"}
+    if period in labels:
+        return labels[period]
+    if period >= 4:
+        return "OT"
+    return f"{period}th"
+
+
+def format_play_length(seconds: float) -> str:
+    """1분은 1, 1분 30초는 1:30처럼 적는다."""
+    total = max(0, int(round(seconds)))
+    minutes, secs = divmod(total, 60)
+    if secs == 0:
+        return str(minutes)
+    return f"{minutes}:{secs:02d}"
 
 
 def parse_bgr(text: str) -> tuple[int, int, int]:
@@ -126,6 +162,400 @@ def merge_intervals(
         start = prev = t
     spans.append((round(start, 3), round(min(end_limit, prev + sample_dt), 3)))
     return [(a, b) for a, b in spans if b - a >= 1.0]
+
+
+@dataclass
+class ClockReading:
+    video_t: float
+    period: int
+    clock_sec: float
+    running: bool
+
+
+_PERIOD_RE = re.compile(r"([1-4])(?:st|nd|rd|th)", re.IGNORECASE)
+_CLOCK_RE = re.compile(r"(\d{1,2}):(\d{2})")
+_DIGITS_RE = re.compile(r"[1-4](?:st|nd|rd|th)\|?(\d{3,5})", re.IGNORECASE)
+
+
+def _clock_from_digits(blob: str) -> float | None:
+    if len(blob) == 4:
+        minutes, seconds = int(blob[:2]), int(blob[2:])
+    elif len(blob) == 3:
+        minutes, seconds = int(blob[0]), int(blob[1:])
+    else:
+        return None
+    if minutes > 20 or seconds > 59:
+        return None
+    return float(minutes * 60 + seconds)
+
+
+def scorebug_options(text: str) -> list[tuple[int, float]]:
+    """한 문자열에서 가능한 피리어드·남은 초를 모두 꺼낸다. 다섯 자리는 끝자리나 끼어든 숫자로 본다."""
+    compact = re.sub(r"\s+", "", text)
+    period_match = _PERIOD_RE.search(compact)
+    period = int(period_match.group(1)) if period_match else None
+    if period is None and re.search(r"ot", compact, re.IGNORECASE):
+        period = 4
+    if period is None:
+        return []
+    found: list[tuple[int, float]] = []
+
+    def add(clock: float | None) -> None:
+        if clock is None or clock < 0 or clock > PERIOD_LENGTH_SEC:
+            return
+        pair = (period, clock)
+        if pair not in found:
+            found.append(pair)
+
+    clock_match = _CLOCK_RE.search(compact)
+    if clock_match:
+        add(_clock_from_digits(f"{int(clock_match.group(1)):02d}{clock_match.group(2)}"))
+        return found
+    digits_match = _DIGITS_RE.search(compact)
+    if digits_match is None:
+        return []
+    digits = digits_match.group(1)
+    if len(digits) == 5:
+        add(_clock_from_digits(digits[:4]))
+        for index in range(5):
+            add(_clock_from_digits(digits[:index] + digits[index + 1 :]))
+    else:
+        add(_clock_from_digits(digits))
+    return found
+
+
+def parse_scorebug_text(text: str) -> tuple[int, float] | None:
+    """'1st|19:09', '2nd|17450'처럼 읽힌 문자열에서 피리어드와 남은 초를 꺼낸다."""
+    options = scorebug_options(text)
+    return options[0] if options else None
+
+
+def consider_clock(
+    history: list[ClockReading],
+    video_t: float,
+    period: int,
+    clock_sec: float,
+) -> ClockReading | None:
+    """1초 안팎으로 줄어드는 값만 경기 시계로 받는다. 20:00 근처로 되돌아가면 다음 피리어드다."""
+    if clock_sec < 0 or clock_sec > PERIOD_LENGTH_SEC:
+        return None
+    if not history:
+        return ClockReading(video_t, period, clock_sec, False)
+    last = history[-1]
+    video_dt = video_t - last.video_t
+    if video_dt < 0.2:
+        return None
+    if (
+        period == last.period
+        and last.clock_sec <= 5 * 60
+        and clock_sec >= 15 * 60
+    ):
+        period = last.period + 1
+    if period < last.period:
+        return None
+    if period > last.period:
+        if clock_sec <= last.clock_sec + 5:
+            return None
+        return ClockReading(video_t, period, clock_sec, False)
+    dropped = last.clock_sec - clock_sec
+    if dropped < -1.0 or dropped > video_dt + 2.0:
+        return None
+    running = dropped >= 0.5
+    return ClockReading(video_t, period, clock_sec, running)
+
+
+def choose_scorebug(texts: list[str], history: list[ClockReading], video_t: float) -> ClockReading | None:
+    found: list[tuple[int, float]] = []
+    for text in list(texts) + ["".join(texts)]:
+        for parsed in scorebug_options(text):
+            if parsed not in found:
+                found.append(parsed)
+    best: ClockReading | None = None
+    best_rank = (2, 1.0e9)
+    for period, clock_sec in found:
+        reading = consider_clock(history, video_t, period, clock_sec)
+        if reading is None:
+            continue
+        same_period = not history or reading.period == history[-1].period
+        gap = abs(clock_sec - history[-1].clock_sec) if history else 0.0
+        rank = (0 if same_period else 1, gap)
+        if rank < best_rank:
+            best = reading
+            best_rank = rank
+    return best
+
+
+def clock_panel_visible(bgr: np.ndarray) -> bool:
+    if bgr.size == 0:
+        return False
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    hue, sat, value = hsv[:, :, 0], hsv[:, :, 1], hsv[:, :, 2]
+    dark_blue = (value < 90) & (sat > 40) & (hue >= 90) & (hue <= 140)
+    return float(dark_blue.mean()) >= 0.25
+
+
+def scorebug_clock_crop(frame: np.ndarray) -> np.ndarray | None:
+    height, width = frame.shape[:2]
+    if height < 100 or width < 200:
+        return None
+    x1, y1, x2, y2 = SCOREBUG_CLOCK_BOX
+    ref_w, ref_h = SCOREBUG_CLOCK_REF
+    left = max(0, int(round(x1 * width / ref_w)))
+    top = max(0, int(round(y1 * height / ref_h)))
+    right = min(width, int(round(x2 * width / ref_w)))
+    bottom = min(height, int(round(y2 * height / ref_h)))
+    if right - left < 20 or bottom - top < 12:
+        return None
+    crop = frame[top:bottom, left:right]
+    if not clock_panel_visible(crop):
+        return None
+    return crop
+
+
+def stoppage_clocks(readings: list[ClockReading]) -> dict[int, list[float]]:
+    """같은 초가 1.6초 이상 머물면 휘슬로 본다. 그 시각이 교체를 예측하는 경계다."""
+    stops: dict[int, list[float]] = {}
+    index = 0
+    while index < len(readings):
+        nxt = index + 1
+        anchor = readings[index]
+        while (
+            nxt < len(readings)
+            and readings[nxt].period == anchor.period
+            and abs(readings[nxt].clock_sec - anchor.clock_sec) <= 0.6
+        ):
+            nxt += 1
+        if readings[nxt - 1].video_t - anchor.video_t >= CLOCK_HOLD_SEC:
+            stops.setdefault(anchor.period, []).append(anchor.clock_sec)
+        index = nxt
+    return stops
+
+
+def map_sightings(
+    readings: list[ClockReading],
+    video_times: list[float],
+    tolerance: float = CLOCK_MATCH_SEC,
+) -> list[tuple[int, float]]:
+    if not readings:
+        return []
+    times = [item.video_t for item in readings]
+    mapped: list[tuple[int, float]] = []
+    for video_t in video_times:
+        index = bisect_left(times, video_t)
+        best: ClockReading | None = None
+        best_dt = tolerance
+        for probe in (index - 1, index):
+            if probe < 0 or probe >= len(readings):
+                continue
+            delta = abs(readings[probe].video_t - video_t)
+            if delta <= best_dt:
+                best_dt = delta
+                best = readings[probe]
+        if best is not None:
+            mapped.append((best.period, best.clock_sec))
+    return mapped
+
+
+def _nearest_stop(stops: list[float], clock_sec: float, before: bool) -> float | None:
+    if before:
+        candidates = [item for item in stops if clock_sec <= item <= clock_sec + SHIFT_WHISTLE_MAX_SEC]
+        return min(candidates) if candidates else None
+    candidates = [item for item in stops if clock_sec - SHIFT_WHISTLE_MAX_SEC <= item <= clock_sec]
+    return max(candidates) if candidates else None
+
+
+def fit_shift(
+    sight_hi: float,
+    sight_lo: float,
+    stop_before: float | None,
+    stop_after: float | None,
+) -> tuple[float, float]:
+    """휘슬이 없으면 40~60초로 두고, 시계 정지까지 이어지면 90초까지 늘린다."""
+    cap = SHIFT_WHISTLE_MAX_SEC if stop_before is not None or stop_after is not None else SHIFT_OPEN_MAX_SEC
+    start = sight_hi if stop_before is None else stop_before
+    end = sight_lo if stop_after is None else stop_after
+    start = min(PERIOD_LENGTH_SEC, max(start, sight_hi))
+    end = max(0.0, min(end, sight_lo))
+    length = start - end
+    if length > cap:
+        extra = length - cap
+        back = start - sight_hi
+        forward = sight_lo - end
+        if forward >= back:
+            trim = min(forward, extra)
+            end += trim
+            extra -= trim
+            start -= min(back, extra)
+        else:
+            trim = min(back, extra)
+            start -= trim
+            extra -= trim
+            end += min(forward, extra)
+        if start - end > cap:
+            end = start - cap
+    length = start - end
+    if length < SHIFT_MIN_SEC:
+        need = SHIFT_MIN_SEC - length
+        back_room = 0.0 if stop_before is not None and abs(start - stop_before) < 0.5 else PERIOD_LENGTH_SEC - start
+        forward_room = 0.0 if stop_after is not None and abs(end - stop_after) < 0.5 else end
+        grow_back = min(need / 2.0, back_room)
+        grow_forward = min(need - grow_back, forward_room)
+        remain = need - grow_back - grow_forward
+        if remain > 0:
+            grow_back += min(remain, back_room - grow_back)
+            remain = need - grow_back - grow_forward
+            grow_forward += min(remain, forward_room - grow_forward)
+        start += grow_back
+        end -= grow_forward
+    start = min(PERIOD_LENGTH_SEC, max(start, end))
+    end = max(0.0, end)
+    if start - end > cap:
+        end = start - cap
+    return start, end
+
+
+def clip_for_teammates(
+    start: float,
+    end: float,
+    sight_hi: float,
+    sight_lo: float,
+    mate_clocks: list[float],
+) -> tuple[float, float]:
+    """늘린 구간에 같은 팀 다른 번호가 두 번 이상 보이면 그 방향의 추정은 버린다."""
+    before = [clock for clock in mate_clocks if sight_hi < clock <= start]
+    after = [clock for clock in mate_clocks if end <= clock < sight_lo]
+    if len(before) >= 2:
+        start = sight_hi
+    if len(after) >= 2:
+        end = sight_lo
+    return start, end
+
+
+def union_length(spans: list[tuple[float, float]]) -> float:
+    intervals = sorted((min(start, end), max(start, end)) for start, end in spans)
+    if not intervals:
+        return 0.0
+    merged: list[list[float]] = [list(intervals[0])]
+    for low, high in intervals[1:]:
+        if low <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], high)
+        else:
+            merged.append([low, high])
+    return sum(high - low for low, high in merged)
+
+
+def bridge_shifts(shifts: list[dict], stops: list[float], mate_clocks: list[float] | None = None) -> list[dict]:
+    """맞닿은 시프트 사이의 안 보인 시간도 넣는다. 휘슬이나 같은 팀 다른 번호가 있으면 교체로 끊는다."""
+    if not shifts:
+        return []
+    mates = mate_clocks or []
+    ordered = sorted(shifts, key=lambda item: item["start_clock_sec"], reverse=True)
+    merged: list[dict] = [dict(ordered[0])]
+    for shift in ordered[1:]:
+        previous = merged[-1]
+        gap = previous["sight_lo"] - shift["sight_hi"]
+        whistle = any(shift["sight_hi"] < stop < previous["sight_lo"] for stop in stops)
+        mate_hits = sum(1 for clock in mates if shift["sight_hi"] < clock < previous["sight_lo"])
+        if gap <= SHIFT_BRIDGE_SEC and not whistle and mate_hits < 2:
+            previous["end_clock_sec"] = round(shift["end_clock_sec"], 3)
+            previous["end_clock"] = shift["end_clock"]
+            previous["duration_sec"] = round(previous["start_clock_sec"] - previous["end_clock_sec"], 3)
+            previous["sightings"] = previous["sightings"] + shift["sightings"]
+            previous["sight_lo"] = min(previous["sight_lo"], shift["sight_lo"])
+            continue
+        merged.append(dict(shift))
+    return merged
+
+
+def play_to_buzzer(shifts: list[dict], period: int, last_period: int) -> None:
+    """마지막 피리어드에서 종료 1분 안에 보였으면 남은 시간을 0초까지 넣는다."""
+    if period < GAME_END_PERIOD or period != last_period:
+        return
+    for shift in shifts:
+        if shift["sight_lo"] > FINAL_MINUTE_SEC or shift["end_clock_sec"] <= 0:
+            continue
+        shift["end_clock_sec"] = 0.0
+        shift["end_clock"] = format_time(0)
+        shift["duration_sec"] = round(shift["start_clock_sec"], 3)
+
+
+def build_playtime(
+    readings: list[ClockReading],
+    video_times: list[float],
+    teammate_times: list[float] | None = None,
+) -> dict:
+    """이름 또는 등번호가 읽힌 시각을 시프트로 묶고, 시계가 간 시간만 피리어드별로 더한다."""
+    current_period = readings[-1].period if readings else None
+    if not readings:
+        return {"current_period": None, "periods": [], "total_sec": 0.0}
+    stops = stoppage_clocks(readings)
+    grouped: dict[int, list[float]] = {}
+    for period, clock_sec in map_sightings(readings, video_times):
+        grouped.setdefault(period, []).append(clock_sec)
+    mates_by_period: dict[int, list[float]] = {}
+    for period, clock_sec in map_sightings(readings, teammate_times or []):
+        mates_by_period.setdefault(period, []).append(clock_sec)
+    seen = sorted({item.period for item in readings})
+    period_rows: list[dict] = []
+    game_total = 0.0
+    for period in range(seen[0], seen[-1] + 1):
+        clocks = sorted(grouped.get(period, []), reverse=True)
+        held = stops.get(period, [])
+        mates = mates_by_period.get(period, [])
+        clusters: list[list[float]] = []
+        for clock_sec in clocks:
+            split = not clusters or clusters[-1][-1] - clock_sec > SHIFT_GAP_SEC
+            if clusters and not split:
+                earlier = clusters[-1][-1]
+                split = any(clock_sec < stop < earlier for stop in held)
+                split = split or sum(1 for mate in mates if clock_sec < mate < earlier) >= 2
+            if split:
+                clusters.append([clock_sec])
+            else:
+                clusters[-1].append(clock_sec)
+        shifts: list[dict] = []
+        for cluster in clusters:
+            sight_hi = cluster[0]
+            sight_lo = cluster[-1]
+            start, end = fit_shift(
+                sight_hi,
+                sight_lo,
+                _nearest_stop(held, sight_hi, before=True),
+                _nearest_stop(held, sight_lo, before=False),
+            )
+            start, end = clip_for_teammates(start, end, sight_hi, sight_lo, mates)
+            if start - end <= 0:
+                start = sight_hi
+                end = max(0.0, sight_hi - 1.0)
+            duration = round(start - end, 3)
+            if duration <= 0:
+                continue
+            shifts.append(
+                {
+                    "start_clock_sec": round(start, 3),
+                    "end_clock_sec": round(end, 3),
+                    "start_clock": format_time(start),
+                    "end_clock": format_time(end),
+                    "duration_sec": duration,
+                    "sightings": len(cluster),
+                    "sight_hi": sight_hi,
+                    "sight_lo": sight_lo,
+                }
+            )
+        shifts = bridge_shifts(shifts, held, mates)
+        play_to_buzzer(shifts, period, seen[-1])
+        for shift in shifts:
+            shift.pop("sight_lo", None)
+            shift.pop("sight_hi", None)
+        spans = [(item["start_clock_sec"], item["end_clock_sec"]) for item in shifts]
+        total = round(union_length(spans), 3)
+        game_total += total
+        period_rows.append({"period": period, "total_sec": total, "shifts": shifts})
+    return {
+        "current_period": current_period,
+        "periods": period_rows,
+        "total_sec": round(game_total, 3),
+    }
 
 
 def parse_easyocr(results, min_conf: float) -> tuple[str, float] | None:
@@ -748,6 +1178,30 @@ class NumberReader:
                     return True
         return False
 
+    def read_scorebug(self, bgr: np.ndarray) -> list[str]:
+        """피리어드와 경기 시계 알약만 읽는다. 숫자와 st/nd/rd, 콜론만 허용한다."""
+        if self.easy is None or bgr.size == 0:
+            return []
+        enlarged = cv2.resize(bgr, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+        try:
+            raw = self.easy.readtext(
+                enlarged,
+                allowlist="0123456789stndrOT|:",
+                detail=1,
+                paragraph=False,
+                min_size=6,
+            )
+        except Exception:
+            return []
+        texts: list[str] = []
+        for _box, text, conf in raw:
+            if float(conf) < 0.30:
+                continue
+            token = str(text).strip()
+            if token:
+                texts.append(token)
+        return texts
+
 
 class SamRefiner:
     def __init__(self, device: str) -> None:
@@ -968,6 +1422,10 @@ class PlayerTimelineTracker:
         self._last_report = self.start_sec
         self._crop_seq = 0
         self._sleeve_left = 0
+        self.clock_readings: list[ClockReading] = []
+        self.play_sightings: list[float] = []
+        self.teammate_sightings: list[float] = []
+        self._last_clock_ocr = -1.0e9
         self._debug_dir = Path("debug_crops")
 
         import torch
@@ -1036,8 +1494,19 @@ class PlayerTimelineTracker:
         if current - self._last_report < 30.0:
             return
         self._last_report = current
+        summary = self.playtime_summary()
+        period = summary["current_period"]
+        if period is None:
+            period_text = "P- 00:00"
+        else:
+            seconds = next(
+                (row["total_sec"] for row in summary["periods"] if row["period"] == period),
+                0.0,
+            )
+            period_text = f"P{period} {format_time(seconds)}"
         print(
             f"  진행 {format_time(current)} / {format_time(self.end_sec)}  "
+            f"{period_text}  합계 {format_time(summary['total_sec'])}  "
             f"처리 {self.stats.frames}프레임  확정 {self.stats.confirmed}",
             flush=True,
         )
@@ -1065,8 +1534,33 @@ class PlayerTimelineTracker:
             self.model.predictor = None
             return self.model.track(frame, **kwargs)
 
+    def _read_scorebug(self, frame: np.ndarray, current: float) -> None:
+        if current - self._last_clock_ocr < OCR_INTERVAL_SEC:
+            return
+        self._last_clock_ocr = current
+        crop = scorebug_clock_crop(frame)
+        if crop is None:
+            return
+        reading = choose_scorebug(self.reader.read_scorebug(crop), self.clock_readings, current)
+        if reading is not None:
+            self.clock_readings.append(reading)
+
+    def _note_play_sighting(self, current: float) -> None:
+        if self.play_sightings and current - self.play_sightings[-1] < 0.15:
+            return
+        self.play_sightings.append(current)
+
+    def _note_teammate(self, current: float) -> None:
+        if self.teammate_sightings and current - self.teammate_sightings[-1] < 0.15:
+            return
+        self.teammate_sightings.append(current)
+
+    def playtime_summary(self) -> dict:
+        return build_playtime(self.clock_readings, self.play_sightings, self.teammate_sightings)
+
     def _process_frame(self, frame: np.ndarray, current: float) -> None:
         self.stats.frames += 1
+        self._read_scorebug(frame, current)
         results = self._track(frame)
         if not results:
             return
@@ -1313,6 +1807,8 @@ class PlayerTimelineTracker:
                 self._vote(state, number, current, conf)
                 if number == self.target and conf >= 0.50:
                     self._note_text_hit("number", torso_crop, current)
+                elif number != self.target and conf >= MIN_OCR_CONF and is_red_white_jersey(torso_crop):
+                    self._note_teammate(current)
 
         sleeve_number = None
         back_missed = read is None or number != self.target or not item["torso_text"]
@@ -1337,6 +1833,8 @@ class PlayerTimelineTracker:
         saw_number = (number == self.target and conf >= TARGET_MIN_CONF) or sleeve_number == self.target
         if named and saw_number:
             self._adopt_prototype(torso_crop, current)
+        if named or saw_number:
+            self._note_play_sighting(current)
 
     def _read_sleeves(self, frame: np.ndarray, item: dict) -> tuple[str | None, float, bool]:
         crop = item["crop"]
@@ -1642,6 +2140,7 @@ class PlayerTimelineTracker:
                 for start, end in intervals
             ],
             "total_duration_sec": round(sum(end - start for start, end in intervals), 3),
+            "playtime": self._playtime_payload(),
             "diagnostics": {
                 "frames": self.stats.frames,
                 "detections": self.stats.detections,
@@ -1669,8 +2168,29 @@ class PlayerTimelineTracker:
                 writer.writerow([f"{start:.3f}", f"{end:.3f}", format_time(start), format_time(end), f"{end - start:.3f}"])
         return json_path, csv_path
 
+    def _playtime_payload(self) -> dict:
+        summary = self.playtime_summary()
+        return {
+            "total_sec": summary["total_sec"],
+            "periods": summary["periods"],
+        }
+
 
 def print_summary(tracker: PlayerTimelineTracker, intervals: list[tuple[float, float]], json_path: Path, csv_path: Path) -> None:
+    playtime = tracker.playtime_summary()
+    shown = [row for row in playtime["periods"] if row["total_sec"] > 0 or row["shifts"]]
+    print()
+    if not shown:
+        print("플레이타임을 계산하지 못했습니다.")
+    for index, row in enumerate(shown):
+        if index:
+            print()
+        print(f"{format_period_label(row['period'])} - {format_play_length(row['total_sec'])}")
+        for shift in row["shifts"]:
+            print(
+                f"{shift['start_clock']}~{shift['end_clock']} - {format_play_length(shift['duration_sec'])}"
+            )
+
     print(f"\n등번호 {tracker.target} 출연 구간")
     if not intervals:
         print("  확정된 구간이 없습니다.")
